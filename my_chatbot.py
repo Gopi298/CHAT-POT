@@ -22,7 +22,8 @@ from langchain_classic.chains.combine_documents import (
 
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("sk-proj-KgBGMBU0dqKfIX--
+p0NsPouLd85rvktjrTpAggN8MkbkQ30S2tvhlHw6rfz1KL82pP_XAux9GpT3BlbkFJ4nRrXcl9ElN46ZJYb-u20JenEJFC0yG_RcNNp_lYHW-RK5-qeQ8puh4szX_MNJc_rYedr95goA")
 
 if not OPENAI_API_KEY:
     st.error("OPENAI_API_KEY is missing.")
