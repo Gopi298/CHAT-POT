@@ -9,26 +9,29 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains import create_retrieval_chain
+
+from langchain_classic.chains import create_retrieval_chain
+from langchain_classic.chains.combine_documents import (
+    create_stuff_documents_chain
+)
 
 
-# ---------------------------------------------------------
-# LOAD ENVIRONMENT VARIABLES
-# ---------------------------------------------------------
+# =========================================================
+# LOAD API KEY
+# =========================================================
 
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 if not OPENAI_API_KEY:
-    st.error("OPENAI_API_KEY is not configured.")
+    st.error("OPENAI_API_KEY is missing.")
     st.stop()
 
 
-# ---------------------------------------------------------
-# STREAMLIT PAGE
-# ---------------------------------------------------------
+# =========================================================
+# PAGE CONFIGURATION
+# =========================================================
 
 st.set_page_config(
     page_title="My PDF Chatbot",
@@ -36,13 +39,21 @@ st.set_page_config(
     layout="wide"
 )
 
+
+# =========================================================
+# TITLE
+# =========================================================
+
 st.title("🤖 My PDF Chatbot")
-st.write("Upload a PDF and ask questions about the document.")
+
+st.write(
+    "Upload a PDF and ask questions about the document."
+)
 
 
-# ---------------------------------------------------------
+# =========================================================
 # SIDEBAR
-# ---------------------------------------------------------
+# =========================================================
 
 with st.sidebar:
 
@@ -54,9 +65,9 @@ with st.sidebar:
     )
 
 
-# ---------------------------------------------------------
+# =========================================================
 # PDF PROCESSING
-# ---------------------------------------------------------
+# =========================================================
 
 if uploaded_file is not None:
 
@@ -74,11 +85,14 @@ if uploaded_file is not None:
                 text += page_text + "\n"
 
 
+    # =====================================================
+    # CHECK PDF TEXT
+    # =====================================================
+
     if not text.strip():
 
         st.error(
-            "Could not extract text from this PDF. "
-            "The PDF may be scanned/image-based."
+            "No readable text was found in this PDF."
         )
 
         st.stop()
@@ -87,24 +101,32 @@ if uploaded_file is not None:
     st.success("PDF loaded successfully.")
 
 
-    # -----------------------------------------------------
-    # TEXT CHUNKING
-    # -----------------------------------------------------
+    # =====================================================
+    # TEXT SPLITTER
+    # =====================================================
 
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=150,
-        separators=["\n\n", "\n", " ", ""]
+        separators=[
+            "\n\n",
+            "\n",
+            " ",
+            ""
+        ]
     )
 
     chunks = text_splitter.split_text(text)
 
-    st.info(f"Created {len(chunks)} text chunks.")
+
+    st.info(
+        f"Created {len(chunks)} text chunks."
+    )
 
 
-    # -----------------------------------------------------
-    # OPENAI EMBEDDINGS
-    # -----------------------------------------------------
+    # =====================================================
+    # EMBEDDINGS
+    # =====================================================
 
     embeddings = OpenAIEmbeddings(
         model="text-embedding-3-small",
@@ -112,11 +134,13 @@ if uploaded_file is not None:
     )
 
 
-    # -----------------------------------------------------
-    # FAISS VECTOR DATABASE
-    # -----------------------------------------------------
+    # =====================================================
+    # FAISS VECTOR STORE
+    # =====================================================
 
-    with st.spinner("Creating vector database..."):
+    with st.spinner(
+        "Creating document knowledge base..."
+    ):
 
         vector_store = FAISS.from_texts(
             chunks,
@@ -124,9 +148,9 @@ if uploaded_file is not None:
         )
 
 
-    # -----------------------------------------------------
+    # =====================================================
     # RETRIEVER
-    # -----------------------------------------------------
+    # =====================================================
 
     retriever = vector_store.as_retriever(
         search_type="similarity",
@@ -136,9 +160,9 @@ if uploaded_file is not None:
     )
 
 
-    # -----------------------------------------------------
-    # CHAT MODEL
-    # -----------------------------------------------------
+    # =====================================================
+    # OPENAI CHAT MODEL
+    # =====================================================
 
     llm = ChatOpenAI(
         model="gpt-4o-mini",
@@ -148,69 +172,80 @@ if uploaded_file is not None:
     )
 
 
-    # -----------------------------------------------------
+    # =====================================================
     # PROMPT
-    # -----------------------------------------------------
+    # =====================================================
 
-    prompt = ChatPromptTemplate.from_template(
-        """
-You are a helpful document question-answering assistant.
+    system_prompt = """
+You are a highly accurate PDF question-answering assistant.
 
-Answer the user's question using the provided document context.
+Answer the user's question using ONLY the information
+available in the provided document context.
 
 Rules:
 
-1. Use the document context as the primary source.
-2. Do not invent information.
-3. If the answer is not available in the document, clearly say:
+1. Do not invent information.
+2. Do not make up facts.
+3. If the answer is not available in the PDF, say:
    "I could not find this information in the uploaded document."
-4. Give a clear and accurate answer.
-5. If useful, explain the answer step by step.
-6. Keep the answer relevant to the user's question.
+4. Give a clear and direct answer.
+5. If the question requires explanation, explain it step by step.
+6. Use the document context as the primary source.
 
-Document context:
+DOCUMENT CONTEXT:
 
 {context}
-
-User question:
-
-{input}
 """
+
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                system_prompt
+            ),
+            (
+                "human",
+                "{input}"
+            )
+        ]
     )
 
 
-    # -----------------------------------------------------
+    # =====================================================
     # DOCUMENT CHAIN
-    # -----------------------------------------------------
+    # =====================================================
 
-    document_chain = create_stuff_documents_chain(
-        llm,
-        prompt
+    question_answer_chain = (
+        create_stuff_documents_chain(
+            llm,
+            prompt
+        )
     )
 
 
-    # -----------------------------------------------------
+    # =====================================================
     # RETRIEVAL CHAIN
-    # -----------------------------------------------------
+    # =====================================================
 
     retrieval_chain = create_retrieval_chain(
         retriever,
-        document_chain
+        question_answer_chain
     )
 
 
-    # -----------------------------------------------------
+    # =====================================================
     # USER QUESTION
-    # -----------------------------------------------------
+    # =====================================================
 
     user_question = st.text_input(
         "💬 Type your question here"
     )
 
 
-    # -----------------------------------------------------
-    # ANSWER
-    # -----------------------------------------------------
+    # =====================================================
+    # GENERATE ANSWER
+    # =====================================================
 
     if user_question:
 
@@ -223,6 +258,10 @@ User question:
             )
 
 
+        # =================================================
+        # ANSWER
+        # =================================================
+
         st.subheader("🤖 Answer")
 
         st.write(
@@ -230,24 +269,26 @@ User question:
         )
 
 
-        # -------------------------------------------------
+        # =================================================
         # SOURCE DOCUMENTS
-        # -------------------------------------------------
+        # =================================================
 
-        with st.expander("📚 View source chunks"):
+        with st.expander(
+            "📚 View source information"
+        ):
 
-            documents = response.get(
+            source_documents = response.get(
                 "context",
                 []
             )
 
-            for i, document in enumerate(
-                documents,
+            for index, document in enumerate(
+                source_documents,
                 start=1
             ):
 
                 st.markdown(
-                    f"**Source {i}**"
+                    f"### Source {index}"
                 )
 
                 st.write(
